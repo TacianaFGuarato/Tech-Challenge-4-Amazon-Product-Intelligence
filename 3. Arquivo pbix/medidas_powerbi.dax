@@ -1,0 +1,356 @@
+// TECH CHALLENGE 4 — AMAZON PRODUCT INTELLIGENCE
+// MEDIDAS DAX PARA DOCUMENTAÇÃO / CÓPIA INDIVIDUAL
+// ATENÇÃO: o Power BI Desktop não importa automaticamente este arquivo.
+// Copie cada expressão em Modelagem > Nova medida.
+// Os separadores estão no padrão ",".
+
+// COLUNA CALCULADA (Modelagem > Nova coluna)
+// Classificação Estratégica
+Classificação Estratégica =
+SWITCH(
+    TRUE(),
+    ISBLANK(amazon_powerbi[rating]) ||
+        ISBLANK(amazon_powerbi[rating_count]),
+        "Dados insuficientes",
+    amazon_powerbi[rating] < 4 &&
+        amazon_powerbi[rating_count] >= 16020,
+        "Atenção",
+    amazon_powerbi[rating] >= 43 / 10 &&
+        amazon_powerbi[rating_count] <= 1106,
+        "Oportunidade",
+    "Monitoramento"
+)
+
+
+// ========================================================================
+// 1 · Visão Executiva
+// ========================================================================
+
+// Total Produtos | Referência: 1.351
+// Quantidade de IDs de produto únicos no contexto de filtros.
+Total Produtos =
+DISTINCTCOUNT(amazon_powerbi[product_id])
+
+
+// Avaliação Média | Referência: 4,09
+// Nota média dos produtos com avaliação disponível.
+Avaliação Média =
+AVERAGE(amazon_powerbi[rating])
+
+
+// Desconto Médio (%) | Referência: 46,69%
+// Converte o desconto médio de uma escala 0–100 para percentual; formatar como porcentagem.
+Desconto Médio (%) =
+DIVIDE(AVERAGE(amazon_powerbi[discount_percentage]), 100)
+
+
+// Preço Promocional Médio | Referência: ₹ 3.304,65
+// Média dos preços promocionais; formatar em rúpias indianas.
+Preço Promocional Médio =
+AVERAGE(amazon_powerbi[discounted_price])
+
+
+// Produtos de Atenção | Referência: 49
+// Critério operacional definido na análise: nota < 4 e pelo menos 16.020 avaliações.
+Produtos de Atenção =
+COALESCE(
+    COUNTROWS(
+        FILTER(
+            amazon_powerbi,
+            NOT ISBLANK(amazon_powerbi[rating]) &&
+            NOT ISBLANK(amazon_powerbi[rating_count]) &&
+            amazon_powerbi[rating] < 4 &&
+            amazon_powerbi[rating_count] >= 16020
+        )
+    ),
+    0
+)
+
+
+// Produtos com Oportunidade | Referência: 81
+// Critério operacional: nota ≥ 4,3 e no máximo 1.106 avaliações; não comprova baixa visibilidade.
+Produtos com Oportunidade =
+COALESCE(
+    COUNTROWS(
+        FILTER(
+            amazon_powerbi,
+            NOT ISBLANK(amazon_powerbi[rating]) &&
+            NOT ISBLANK(amazon_powerbi[rating_count]) &&
+            amazon_powerbi[rating] >= 43 / 10 &&
+            amazon_powerbi[rating_count] <= 1106
+        )
+    ),
+    0
+)
+
+
+// Total Categorias | Referência: 9
+// Categorias principais distintas.
+Total Categorias =
+DISTINCTCOUNTNOBLANK(amazon_powerbi[categoria_principal])
+
+
+// Mediana de Avaliações | Referência: 4.740
+// Mediana da quantidade de avaliações por produto; não é o total de avaliações.
+Mediana de Avaliações =
+MEDIAN(amazon_powerbi[rating_count])
+
+
+// ========================================================================
+// 2 · Produtos e Categorias
+// ========================================================================
+
+// Produtos Classificados | Referência: 1.348
+// Produtos com cluster atribuído pelo K-Means.
+Produtos Classificados =
+COALESCE(
+    COUNTROWS(
+        FILTER(amazon_powerbi, NOT ISBLANK(amazon_powerbi[cluster]))
+    ),
+    0
+)
+
+
+// Total Clusters | Referência: 5
+// Quantidade de grupos atribuídos, excluindo nulos.
+Total Clusters =
+DISTINCTCOUNTNOBLANK(amazon_powerbi[cluster])
+
+
+// Cobertura K-Means (%) | Referência: 99,78%
+// Porcentagem de produtos com classificação; formatar como porcentagem.
+Cobertura K-Means (%) =
+DIVIDE([Produtos Classificados], [Total Produtos], 0)
+
+
+// Produtos Não Classificados | Referência: 3
+// Registros excluídos do agrupamento por valores ausentes nas variáveis do modelo.
+Produtos Não Classificados =
+[Total Produtos] - [Produtos Classificados]
+
+
+// Avaliações do Produto | Referência: Variável por produto
+// Usar somente com product_id no contexto; isoladamente indica o máximo do catálogo (426.973), NÃO a soma de avaliações.
+Avaliações do Produto =
+MAX(amazon_powerbi[rating_count])
+
+
+// % Produtos por Cluster | Referência: 26,80% para o maior cluster
+// Participação de cada perfil na seleção atual; sem filtro de cluster, o resultado 100% é esperado.
+% Produtos por Cluster =
+DIVIDE(
+    [Total Produtos],
+    CALCULATE(
+        [Total Produtos],
+        REMOVEFILTERS(
+            amazon_powerbi[perfil_cluster],
+            amazon_powerbi[cluster]
+        )
+    ),
+    0
+)
+
+
+// % Cluster na Categoria | Referência: 40,00% para alto engajamento em Computers & Accessories
+// Mesma lógica de participação acima, usada na matriz com categoria nas linhas e perfil nas colunas.
+% Cluster na Categoria =
+DIVIDE(
+    [Total Produtos],
+    CALCULATE(
+        [Total Produtos],
+        REMOVEFILTERS(
+            amazon_powerbi[perfil_cluster],
+            amazon_powerbi[cluster]
+        )
+    ),
+    0
+)
+
+
+// Produtos Alto Engajamento | Referência: 362
+// Contagem do perfil de alto engajamento e desconto elevado.
+Produtos Alto Engajamento =
+COALESCE(
+    CALCULATE(
+        [Total Produtos],
+        KEEPFILTERS(
+            amazon_powerbi[perfil_cluster] = "Alto engajamento e desconto elevado"
+        )
+    ),
+    0
+)
+
+
+// Produtos Menor Satisfação | Referência: 182
+// Contagem do cluster de menor satisfação; não se confunde com a regra dos 49 produtos de atenção.
+Produtos Menor Satisfação =
+COALESCE(
+    CALCULATE(
+        [Total Produtos],
+        KEEPFILTERS(amazon_powerbi[perfil_cluster] = "Menor satisfação")
+    ),
+    0
+)
+
+
+// ========================================================================
+// 3 · Preços e Estratégia Comercial
+// ========================================================================
+
+// Preço Original Médio | Referência: ₹ 5.691,18
+// Média dos preços anunciados sem desconto.
+Preço Original Médio =
+AVERAGE(amazon_powerbi[actual_price])
+
+
+// Economia Média Potencial | Referência: ₹ 2.386,52
+// Média da diferença entre preço original e promocional; não reflete economias realizadas em vendas.
+Economia Média Potencial =
+AVERAGE(amazon_powerbi[economia_valor])
+
+
+// Produtos com Desconto | Referência: 1.304
+// Produtos com desconto positivo.
+Produtos com Desconto =
+COALESCE(
+    COUNTROWS(
+        FILTER(
+            amazon_powerbi,
+            NOT ISBLANK(amazon_powerbi[discount_percentage]) &&
+            amazon_powerbi[discount_percentage] > 0
+        )
+    ),
+    0
+)
+
+
+// % Produtos com Desconto | Referência: 96,52%
+// Participação dos produtos com desconto positivo; formatar em percentual.
+% Produtos com Desconto =
+DIVIDE([Produtos com Desconto], [Total Produtos], 0)
+
+
+// Desconto Máximo (%) | Referência: 94%
+// Maior percentual de desconto; formatar em percentual.
+Desconto Máximo (%) =
+DIVIDE(MAX(amazon_powerbi[discount_percentage]), 100)
+
+
+// ========================================================================
+// 4 · Customer Insights
+// ========================================================================
+
+// Produtos Sentimento Positivo | Referência: 1.284
+// Produtos cujo texto agregado tem sentimento predominantemente positivo.
+Produtos Sentimento Positivo =
+COALESCE(
+    CALCULATE(
+        [Total Produtos],
+        KEEPFILTERS(amazon_powerbi[sentimento] = "Positivo")
+    ),
+    0
+)
+
+
+// Produtos Sentimento Negativo | Referência: 61
+// Produtos cujo texto agregado tem sentimento predominantemente negativo.
+Produtos Sentimento Negativo =
+COALESCE(
+    CALCULATE(
+        [Total Produtos],
+        KEEPFILTERS(amazon_powerbi[sentimento] = "Negativo")
+    ),
+    0
+)
+
+
+// Produtos Sentimento Neutro | Referência: 6
+// Produtos cujo texto agregado tem sentimento predominantemente neutro.
+Produtos Sentimento Neutro =
+COALESCE(
+    CALCULATE(
+        [Total Produtos],
+        KEEPFILTERS(amazon_powerbi[sentimento] = "Neutro")
+    ),
+    0
+)
+
+
+// % Sentimento Positivo | Referência: 95,04%
+// Porcentagem de PRODUTOS com textos agregados classificados como positivos; não é % de clientes satisfeitos.
+% Sentimento Positivo =
+DIVIDE([Produtos Sentimento Positivo], [Total Produtos], 0)
+
+
+// Score Médio Sentimento | Referência: 0,84
+// Média de polaridade VADER, entre −1 e +1; formatar como número decimal, NÃO porcentagem.
+Score Médio Sentimento =
+AVERAGE(amazon_powerbi[sentiment_score])
+
+
+// Menções Temas Positivos | Referência: 2.208 (soma das expressões selecionadas)
+// Usar por expressao; o agregado soma menções a expressões e pode contar o mesmo produto mais de uma vez.
+Menções Temas Positivos =
+CALCULATE(
+    SUM(amazon_temas[produtos_mencionando]),
+    amazon_temas[tipo_texto] = "Positivo"
+)
+
+
+// Menções Temas Negativos | Referência: 102 (soma das expressões selecionadas)
+// Usar por expressao; não representa produtos únicos nem o total de comentários negativos.
+Menções Temas Negativos =
+CALCULATE(
+    SUM(amazon_temas[produtos_mencionando]),
+    amazon_temas[tipo_texto] = "Negativo"
+)
+
+
+// ========================================================================
+// 5 · Recomendações Estratégicas
+// ========================================================================
+
+// % Produtos de Atenção | Referência: 3,63%
+// Proporção de produtos de atenção dentro do contexto atual.
+% Produtos de Atenção =
+DIVIDE([Produtos de Atenção], [Total Produtos], 0)
+
+
+// % Produtos com Oportunidade | Referência: 6,00%
+// Proporção de candidatos a oportunidade dentro do contexto atual.
+% Produtos com Oportunidade =
+DIVIDE([Produtos com Oportunidade], [Total Produtos], 0)
+
+
+// Avaliação Média - Atenção | Referência: 3,82
+// Nota média apenas dos produtos que cumprem a regra de atenção.
+Avaliação Média - Atenção =
+CALCULATE(
+    [Avaliação Média],
+    KEEPFILTERS(
+        FILTER(
+            amazon_powerbi,
+            NOT ISBLANK(amazon_powerbi[rating]) &&
+            NOT ISBLANK(amazon_powerbi[rating_count]) &&
+            amazon_powerbi[rating] < 4 &&
+            amazon_powerbi[rating_count] >= 16020
+        )
+    )
+)
+
+
+// Engajamento Mediano - Atenção | Referência: 25.824
+// Mediana da contagem de avaliações dos produtos de atenção; não representa visualizações.
+Engajamento Mediano - Atenção =
+CALCULATE(
+    [Mediana de Avaliações],
+    KEEPFILTERS(
+        FILTER(
+            amazon_powerbi,
+            NOT ISBLANK(amazon_powerbi[rating]) &&
+            NOT ISBLANK(amazon_powerbi[rating_count]) &&
+            amazon_powerbi[rating] < 4 &&
+            amazon_powerbi[rating_count] >= 16020
+        )
+    )
+)
